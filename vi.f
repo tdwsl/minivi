@@ -37,6 +37,7 @@ create cbuf 2048 allot
 0 value cbufp
 create query 160 allot
 0 value query-len
+0 value nothing
 
 : line cells lines + ;
 
@@ -207,6 +208,7 @@ defer *key
   1 to inserting? draw
   0 begin
     *key dup 27 = if drop
+      dup 0= to nothing
       dup buf swap insert x + 1- to dx bind-x
       0 to inserting? draw exit then
     dup 10 = if drop
@@ -272,7 +274,7 @@ defer *key
   to y bind-y draw ;
 
 : uncut-lines ( -- )
-  cnlines 0= if s" empty buffer" >message draw exit then
+  cnlines 0= if 1 to nothing s" empty buffer" >message draw exit then
   cbuf cnlines 0 do
     y insert-newline next-line y line !
     len 1+ 2dup move-line +
@@ -280,30 +282,31 @@ defer *key
 
 : command ( c -- )
   x y xy1 2!
+  0 to nothing
   dup case
   [char] i of accept-insert endof
   [char] a of x-after accept-insert endof
   [char] A of x-eol x-after accept-insert endof
   [char] I of x-start accept-insert endof
-  [char] o of y 1+ dup to y insert-blankline bind-x accept-insert endof
-  [char] O of y insert-blankline bind-x accept-insert endof
+  [char] o of y 1+ dup to y insert-blankline bind-x accept-insert 0 to nothing endof
+  [char] O of y insert-blankline bind-x accept-insert 0 to nothing endof
   [char] x of del endof
   [char] X of x 0> if x 1- to dx bind-x 8 emit del then endof
-  [char] J of join-line endof
+  [char] J of nlines join-line nlines = to nothing endof
   [char] d of
     how-many *key case
     [char] d of cut-lines endof
     [char] j of 2* cut-lines endof
     [char] k of y over - dup 0>= if to y 1+ cut-lines else 2drop then endof
-    drop endcase
+    1 to nothing drop endcase
     1 to last-many
   endof
   [char] P of uncut-lines endof
-  [char] p of y 1+ to y uncut-lines endof
+  [char] p of cnlines if y 1+ to y then uncut-lines endof
   dup of drop last-lastbuf 2@ to lastbuf-len lastbuf c! exit endof
   endcase
   lastbuf-len last-lastbuf 2!
-  1 to changed? ;
+  nothing 0= if 1 to changed? then ;
 
 : repeat-last ( n -- )
   ['] unlog-key is *key
@@ -453,4 +456,5 @@ defer *key
   again ;
 
 main
+
 
