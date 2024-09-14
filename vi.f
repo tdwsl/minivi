@@ -35,6 +35,8 @@ create filename-buf 256 allot
 create cbuf 2048 allot
 0 value cnlines
 0 value cbufp
+create query 160 allot
+0 value query-len
 
 : line cells lines + ;
 
@@ -151,8 +153,7 @@ create cbuf 2048 allot
   buf swap move ;
 
 : draw ( -- )
-  vs y min nlines 1- min to vs
-  y height - 1+ vs max to vs
+  y height - 1+ vs max y min nlines 1- min to vs
   page
   vs height + vs do
     i ?line type cr
@@ -179,8 +180,7 @@ defer draw
   x 0 max to x ;
 
 : bind-y ( -- )
-  y 0 max nlines 1- min
-  dup y <> if to y bind-x else drop then ;
+  y 0 max nlines 1- min to y bind-x ;
 
 : >lastbuf ( c -- )
   lastbuf lastbuf-len + c!
@@ -373,13 +373,16 @@ defer *key
     2drop cmd-save buf c@ [char] f <> if page bye then
   then ;
 
-: colon-command ( -- )
-  0 height at-xy msg-max dup spaces backspaces [char] : emit
-  0 begin key dup 10 <> while
+: enter-command ( buf c -- )
+  0 height at-xy msg-max dup spaces backspaces emit
+  >r 0 begin key dup 10 <> while
     dup 127 = if .bs drop
-      ?dup 0= if draw exit then 1-
-    else dup emit over buf + c! 1+ then
-  repeat drop ?dup 0= if draw exit then
+      ?dup 0= if r> drop -1 exit then 1-
+    else dup emit over r@ + c! 1+ then
+  repeat r> 2drop ;
+
+: colon-command ( -- )
+  buf [char] : enter-command dup 0<= if drop draw exit then
   buf swap split-cmd arg 2! cmd 2!
   cmd 2@ s" q" str= if
     changed? if s" unsaved changes, use q! to quit" >message draw exit then
@@ -389,6 +392,28 @@ defer *key
   cmd 2@ s" wq" str= cmd 2@ s" x" str= or if cmd-saveq draw exit then
   cmd 2@ s" o" str= if cmd-load draw exit then
   cmd 2@ >message s" unknown command " <<message draw ;
+
+: yx+ ( y x -- y x )
+  over line @ over + c@ if 1+
+  else drop 1+ dup nlines = if drop 0 s" wrapped around" >message then 0 then ;
+
+: search ( -- )
+  query-len 0= if s" no previous search" >message draw exit then
+  y x begin yx+
+    over line @ over + query query-len ( s1 s2 len )
+    begin dup while >r over c@ over c@ = r> swap while
+    1- >r 1+ >r 1+ r> r> repeat then nip nip
+    0= if to x to y draw exit then
+  over y = over x = and until
+  query query-len >message s"  not found" >>message draw ;
+
+: enter-search ( -- )
+  query [char] / enter-command ?dup 0= if search exit then
+  dup -1 = if drop draw exit then
+  to query-len search ;
+
+: pgdn vs height 1- + dup to vs to y bind-y draw ;
+: pgup vs if vs height 1- - 0 max dup to vs height 1- + to y bind-y then draw ;
 
 : control ( c -- )
   dup case
@@ -400,10 +425,12 @@ defer *key
   [char] l of go-right endof
   32       of go-right endof
   [char] . of last-many repeat-last exit endof
-  6        of vs height 1- / 1+ height 1- * nlines 1- min dup to vs to y draw endof
-  2        of y height 1- / 1- height 1- * 0 max to y draw endof
+  2        of pgup endof
+  6        of pgdn endof
   [char] 0 of x to how-many go-left endof
   [char] : of colon-command endof
+  [char] / of enter-search endof
+  [char] n of search endof
   dup of 0 endof endcase if exit then
   dup lastbuf c!
   1 to lastbuf-len
