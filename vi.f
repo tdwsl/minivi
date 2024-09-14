@@ -32,8 +32,9 @@ create lastbuf 2048 allot
 2variable cmd
 0 value changed?
 create filename-buf 256 allot
-create delb 512 allot
-delb value delp
+create cbuf 2048 allot
+0 value cnlines
+0 value cbufp
 
 : line cells lines + ;
 
@@ -108,13 +109,14 @@ delb value delp
   r> y line !
   cap-line ;
 
-: insert-newline ( -- )
+: insert-newline ( y -- )
   >r
   r@ line dup cell+ nlines r@ - cells move
   nlines 1+ to nlines
   next-line r> line ! ;
 
-: insert-blankline insert-newline cap-line ;
+: insert-blankline ( y -- )
+  insert-newline cap-line ;
 
 : split-line ( -- )
   y 1+ insert-newline
@@ -176,6 +178,10 @@ defer draw
   y line @ len 1- dx min to x drop
   x 0 max to x ;
 
+: bind-y ( -- )
+  y 0 max nlines 1- min
+  dup y <> if to y bind-x else drop then ;
+
 : >lastbuf ( c -- )
   lastbuf lastbuf-len + c!
   lastbuf-len 1+ to lastbuf-len ;
@@ -231,12 +237,9 @@ defer *key
   loop drop
   x to dx ;
 
-: >del delp dup 1+ to delp c! ;
-: del> delp 1- dup to delp c@ ;
-
 : del ( -- )
   y line @ dup c@ 0= if drop exit then
-  x + dup dup c@ >del 1+ over len move
+  x + dup 1+ over len move
   y line @ x + c@ 0= x and if 8 emit x 1- to dx bind-x then type-right ;
 
 : del-line ( y -- )
@@ -255,6 +258,26 @@ defer *key
   y del-line
   y 1- to y r> 1+ to dx bind-x draw ;
 
+: cut-line ( -- )
+  y line @ len 1+ >r cbufp r@ move
+  r> cbufp + to cbufp
+  y del-line ;
+
+: cut-lines ( n -- )
+  dup y + nlines > if drop exit then
+  cbuf to cbufp
+  to cnlines
+  y dup cnlines + to y
+  cnlines 0 do y 1- to y cut-line loop
+  to y bind-y draw ;
+
+: uncut-lines ( -- )
+  cnlines 0= if s" empty buffer" >message draw exit then
+  cbuf cnlines 0 do
+    y insert-newline next-line y line !
+    len 1+ 2dup move-line +
+  loop drop draw ;
+
 : command ( c -- )
   x y xy1 2!
   dup case
@@ -267,6 +290,16 @@ defer *key
   [char] x of del endof
   [char] X of x 0> if x 1- to dx bind-x 8 emit del then endof
   [char] J of join-line endof
+  [char] d of
+    how-many *key case
+    [char] d of cut-lines endof
+    [char] j of 2* cut-lines endof
+    [char] k of y over - dup 0>= if to y 1+ cut-lines else 2drop then endof
+    drop endcase
+    1 to last-many
+  endof
+  [char] P of uncut-lines endof
+  [char] p of y 1+ to y uncut-lines endof
   dup of drop last-lastbuf 2@ to lastbuf-len lastbuf c! exit endof
   endcase
   lastbuf-len last-lastbuf 2!
@@ -358,7 +391,6 @@ defer *key
   cmd 2@ >message s" unknown command " <<message draw ;
 
 : control ( c -- )
-  delb to delp
   dup case
   [char] h of go-left endof
   127      of go-left endof
