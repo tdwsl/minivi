@@ -266,7 +266,7 @@ defer *key
   y del-line ;
 
 : cut-lines ( n -- )
-  dup y + nlines > if drop exit then
+  dup y + nlines > if 1 to nothing drop exit then
   cbuf to cbufp
   to cnlines
   y dup cnlines + to y
@@ -279,6 +279,31 @@ defer *key
     y insert-newline next-line y line !
     len 1+ 2dup move-line +
   loop drop draw ;
+
+: replace-key ( -- )
+  1 to last-many *key
+  dup 27 = how-many x + y line @ len nip >= or if drop 1 to nothing exit then
+  y line @ x + how-many 0 do over emit 2dup c! 1+ loop 2drop
+  how-many 1- x + to dx bind-x 8 emit ;
+
+: replace ( str len -- )
+  dup >r
+  dup x + y line @ len nip >= if
+    next-line >r left move-line move-line cap-line r> y line !
+  else y line @ x + swap move then
+  r> x + to x type-right x 1- to dx bind-x 8 emit ;
+
+: accept-replace ( -- )
+  1 to nothing
+  0 begin *key dup 27 <> while
+    dup 127 = if drop dup if 1- 8 emit then
+    else dup 10 = if drop buf swap replace x-after split-line
+      y 1+ to y 0 dup to x dup to nothing
+      y line @ 1+ y line ! draw
+    else dup emit over buf + c! 1+ then then
+  repeat drop ?dup if 0 to nothing buf swap replace then ;
+
+defer 'repeat-last
 
 : command ( c -- )
   x y xy1 2!
@@ -297,12 +322,19 @@ defer *key
     how-many *key case
     [char] d of cut-lines endof
     [char] j of 2* cut-lines endof
-    [char] k of y over - dup 0>= if to y 1+ cut-lines else 2drop then endof
+    [char] k of y over - dup 0>= if to y 1+ cut-lines
+      else 1 to nothing 2drop then endof
     1 to nothing drop endcase
     1 to last-many
   endof
   [char] P of uncut-lines endof
   [char] p of cnlines if y 1+ to y then uncut-lines endof
+  [char] r of replace-key endof
+  [char] R of
+    how-many 0= if x-after
+    else 0 to how-many then
+    accept-replace
+  endof
   dup of drop last-lastbuf 2@ to lastbuf-len lastbuf c! exit endof
   endcase
   lastbuf-len last-lastbuf 2!
@@ -317,6 +349,8 @@ defer *key
   loop
   loud
   ['] log-key is *key ;
+
+' repeat-last is 'repeat-last
 
 : go-right ( -- )
   how-many 0 do
@@ -452,9 +486,8 @@ defer *key
   else 2drop blank-file 0 0 filename 2! then
   draw begin
     key,times to how-many
-    control
+    control \ depth if ." overflow" cr throw then
   again ;
 
 main
-
 
